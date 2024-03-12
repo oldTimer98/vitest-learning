@@ -378,19 +378,19 @@ afterAll(async () => {
 
 # 九、掌握Vitest的调试技巧
 
-## 1、`javascript debug terminal`
+## 1、javascript debug terminal
 
 通过`vscode`的自带的调试终端进行测试
 
 ![image-20240301101509725](https://gitee.com/nest-of-old-time/picture/raw/master/typora/202403011015816.png)
 
-## 2、`run and debug` `推荐`
+## 2、run and debug 推荐
 
 通过创建`launch.json`文件去运行调试
 
 ![image-20240301101635122](https://gitee.com/nest-of-old-time/picture/raw/master/typora/202403011016280.png)
 
-## 3、`vitest plugins` `推荐`
+## 3、vitest plugins 推荐
 
 使用`package.json`的通过`vitest run`进行`debug`
 
@@ -418,7 +418,7 @@ afterAll(async () => {
 }
 ```
 
-# 十、`Vitest` 对比 `Jest` 
+# 十、Vitest 对比 Jest
 
 ## 1、对比
 
@@ -433,7 +433,7 @@ afterAll(async () => {
 - Jest 默认启用[全局 API](https://jestjs.io/zh-Hans/docs/api)。然而 `Vitest` 没有。你既可以通过 [`globals` 配置选项](https://cn.vitest.dev/config/#globals)启用全局 API，也可以通过更新你的代码以便使用来自 `vitest` 模块的导入。
 - 等等......**具体可以查看官方文档**
 
-# 十一、实现一个自己的 `mini-test-runner`
+# 十一、实现一个自己的 mini-test-runner
 
 ## 1、目标
 
@@ -445,19 +445,245 @@ afterAll(async () => {
 
 ```js
 // 1.spec.js
-import { test } from "./core.js"
+import { test, run,describe } from "./core.js"
 
-test("first test case", () => {
-  console.log("1. first test case");
-});
+describe("", () => {
+  test("first test case", () => {
+    console.log("1. first test case")
+  })
 
-test("second test case", () => {
-  console.log("2. second test case");
-});
+  test.only("second test case", () => {
+    console.log("2. second test case")
+  })
+})
+
+run()
 ```
 
 ```js
 // core.js
+let testCallbacks = []
+let onlyCallbacks = []
+let describeCallbacks = []
+let beforeAllCallbacks = []
+let beforeEachCallbacks = []
+let afterEachCallbacks = []
+let afterAllCallbacks = []
+export function describe(name, callback) {
+  describeCallbacks.push({ name, callback })
+  callback()
+}
+export function test(name, callback) {
+  testCallbacks.push({ name, callback })
+}
+test.only = function (name, callback) {
+  onlyCallbacks.push({ name, callback })
+}
+export const it = test
+
+export function expect(pre) {
+  return {
+    toBe: cur => {
+      if (pre === cur) {
+        console.log("通过")
+      } else {
+        throw new Error(`不通过,pre: ${pre} 不等于 cur: ${cur}`)
+      }
+    },
+    toEqual: cur => {
+      if (typeof cur === "object") {
+        throw new Error(`不通过,类型只能为object`)
+      }
+      if (pre === cur) {
+        console.log("通过")
+      } else {
+        throw new Error(`不通过,pre: ${pre} 不等于 cur: ${cur}`)
+      }
+    },
+  }
+}
+
+export function beforeAll(fn){
+  beforeAllCallbacks.push(fn)
+}
+export function beforeEach(fn){
+  beforeEachCallbacks.push(fn)
+}
+export function AfterEach(fn){
+  afterEachCallbacks.push(fn)
+}
+export function AfterAll(fn){
+  afterAllCallbacks.push(fn)
+}
+export function run() {
+  const tests = onlyCallbacks.length > 0 ? onlyCallbacks : testCallbacks
+  for (const { name, callback } of tests) {
+    try {
+      callback()
+      console.log(`ok: ${name}`)
+    } catch (error) {
+      console.log(`error: ${name}`)
+    }
+  }
+}
+```
+
+主要的执行逻辑在`run`方法，通过收集`test`等内部的回调去执行,并且在执行`test.only`的时候需要去判断一下
+
+```javascript
+ const tests = onlyCallbacks.length > 0 ? onlyCallbacks : testCallbacks
+```
+
+这样就可以只执行`only`的回调了！！！
+
+接下来我们继续补充生命周期的执行方法,其实就是改造`run`方法
+
+```javascript
+export function run() {
+  // 执行总的beforeAll回调
+  beforeAllCallbacks.forEach(fn => fn())
+
+  const tests = onlyCallbacks.length > 0 ? onlyCallbacks : testCallbacks
+  for (const { name, callback } of tests) {
+    // 执行beforeEach的回调
+    beforeEachCallbacks.forEach(fn => fn())
+
+    try {
+      callback()
+      console.log(`ok: ${name}`)
+    } catch (error) {
+      console.log(`error: ${name}`)
+    }
+    // 执行afterEach的回调
+    afterEachCallbacks.forEach(fn => fn())
+  }
+  // 执行总的afterAll回调
+  afterAllCallbacks.forEach(fn => fn())
+}
+```
+
+如此一来，我们对于基本的`vitest`的`api`的功能就已经完成，接下来我们继续完善，我们写一个插件，让它能够自动运行测试代码，而不是我们手动调用`run`方法
+
+## 3、实现自动运行测试代码
+
+```javascript
+import fs from "fs/promises"
+import { glob } from "glob" // 一个匹配文件名的插件
+
+// 查找所有以 `.spec.js` 结尾的测试文件
+const testFiles = glob.sync("**/*.spec.js", { ignore: "node_modules/**" })
+
+console.log("testFiles", testFiles)
+```
+
+**运行代码返回结果如下**
+
+![image-20240312154105534](https://gitee.com/nest-of-old-time/picture/raw/master/typora/202403121541617.png)
+
+**使用`fs`模块对文件进行处理**
+
+```javascript
+import fs from "fs/promises"
+import { glob } from "glob"
+
+// 查找所有以 `.spec.js` 结尾的测试文件
+const testFiles = glob.sync("**/*.spec.js", { ignore: "node_modules/**" })
+
+// 运行所有测试文件
+for (const testFile of testFiles) {
+  const fileContent = await fs.readFile(testFile, "utf-8")
+  console.log('',fileContent);
+}
+```
+
+
+
+**运行代码返回结果如下**
+
+![image-20240312154535385](https://gitee.com/nest-of-old-time/picture/raw/master/typora/202403121545476.png)
+
+**接下来我们需要自动去运行代码，我们把`run`方法去掉，得需要程序自动去运行**
+
+**并且我们不只有一个测试文件，所以需要对所有测试文件的内容进行打包合并到一个文件内去运行，这里我使用`edbulid`**
+
+```javascript
+import fs from "fs/promises"
+import { glob } from "glob"
+import { build } from "esbuild"
+// 查找所有以 `.spec.js` 结尾的测试文件
+const testFiles = glob.sync("**/*.spec.js", { ignore: "node_modules/**" })
+
+// 运行所有测试文件
+for (const testFile of testFiles) {
+  const fileContent = await fs.readFile(testFile, "utf-8")
+  await runModule(fileContent)
+}
+
+async function runModule(fileContent) {
+  try {
+    const result = await build({
+      stdin: {
+        contents: fileContent,
+        resolveDir: process.cwd(),
+      },
+      write: false,
+      bundle: true,
+      target: "esnext",
+    })
+    const transformedCode = result.outputFiles[0].text
+
+    console.log("result", transformedCode)
+  } catch (error) {
+    console.error("Error executing module:", error)
+  }
+}
+```
+
+**运行后看见确实合并在一起了**
+
+![image-20240312162642156](https://gitee.com/nest-of-old-time/picture/raw/master/typora/202403121626250.png)
+
+## 4、最终代码
+
+```javascript
+import fs from "fs/promises"
+import { glob } from "glob"
+import { build } from "esbuild"
+// 查找所有以 `.spec.js` 结尾的测试文件
+const testFiles = glob.sync("**/*.spec.js", { ignore: "node_modules/**" })
+
+// 运行所有测试文件
+for (const testFile of testFiles) {
+  const fileContent = await fs.readFile(testFile, "utf-8")
+  await runModule(fileContent + "import { run } from './core.js'; run()")
+}
+
+async function runModule(fileContent) {
+  try {
+    // 转换代码为 CommonJS 格式并捆绑依赖
+    const result = await build({
+      stdin: {
+        contents: fileContent,
+        resolveDir: process.cwd(),
+      },
+      write: false,
+      bundle: true,
+      target: "esnext",
+    })
+    // 获取转换后的代码
+    const transformedCode = result.outputFiles[0].text
+    // 执行转换后的代码
+    const runCode = new Function(transformedCode)
+    runCode()
+  } catch (error) {
+    console.error("Error executing module:", error)
+  }
+}
 
 ```
 
+**最后我们使用暴力的方式，去运行测试代码**
+
+![image-20240312163225596](https://gitee.com/nest-of-old-time/picture/raw/master/typora/202403121632675.png)
+
+**所有文件都测试完毕**

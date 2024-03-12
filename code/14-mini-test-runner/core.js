@@ -1,7 +1,10 @@
 let testCallbacks = []
 let onlyCallbacks = []
 let describeCallbacks = []
-
+let beforeAllCallbacks = []
+let beforeEachCallbacks = []
+let afterEachCallbacks = []
+let afterAllCallbacks = []
 export function describe(name, callback) {
   describeCallbacks.push({ name, callback })
   callback()
@@ -36,26 +39,36 @@ export function expect(pre) {
   }
 }
 
-export function beforeAll(fn){
-
+export function beforeAll(fn) {
+  beforeAllCallbacks.push(fn)
 }
-export function beforeEach(fn){
-
+export function beforeEach(fn) {
+  beforeEachCallbacks.push(fn)
 }
-export function AfterEach(fn){
-
+export function AfterEach(fn) {
+  afterEachCallbacks.push(fn)
 }
-export function AfterAll(fn){
-
+export function AfterAll(fn) {
+  afterAllCallbacks.push(fn)
 }
 export function run() {
+  // 执行总的beforeAll回调
+  beforeAllCallbacks.forEach(fn => fn())
+
   const tests = onlyCallbacks.length > 0 ? onlyCallbacks : testCallbacks
   for (const { name, callback } of tests) {
+    // 执行beforeEach的回调
+    beforeEachCallbacks.forEach(fn => fn())
+
     try {
       callback()
       console.log(`ok: ${name}`)
     } catch (error) {
       console.log(`error: ${name}`)
     }
+    // 执行afterEach的回调
+    afterEachCallbacks.forEach(fn => fn())
   }
+  // 执行总的afterAll回调
+  afterAllCallbacks.forEach(fn => fn())
 }

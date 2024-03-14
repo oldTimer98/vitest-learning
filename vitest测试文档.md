@@ -1,3 +1,7 @@
+
+
+
+
 # 前言
 
 自 2023 年开始，我曾经学过一遍前端测试，但当时并没有充分应用。从 2024 年开始，我决定重新学习单元测试，以提升我的代码质量并深入理解单元测试的思想。
@@ -142,9 +146,6 @@ import { useTodoStore } from './todo';
 import { createPinia, setActivePinia } from 'pinia';
 
 describe("todo", () => {
-
-
-
   test("新增一个todo", () => {
     // 1、准备数据
     setActivePinia(createPinia())
@@ -690,23 +691,549 @@ async function runModule(fileContent) {
 
 # 十二、准备测试数据的三种方式
 
+## 1、内联数据
 
+```js
+  it('should add a todo', () => {
+    // 低层次的代码
+    const todo: Todo = {
+      title: "吃饭",
+      content: "今天要和小明去吃饭",
+    }
 
-# 十三、后门操作数据数据的方式
+    addTodo(todo)
 
-# 十四、最小准备测试数据原则
+    expect(todos[0]).equal(todo)
+  })
+```
 
-# 十五、程序的间接输入
+> 缺点：
+>
+> - 重复代码
+> - 当逻辑复杂的时候 就会导致单元测试可读性变差
+
+## 2、隐式的方式
+
+```js
+describe("隐式", () => {
+  let todoA = {}
+  let todoB = {}
+  let todoC = {}
+  beforeEach(() => {
+    todoA
+    todoB
+    todoC
+  })
+  it('(should )', () => {
+  });
+});
+
+```
+
+## 3、工厂函数
+
+> 需要考虑的两个问题
+>
+> -  代码重复的问题
+> -  可读性的问题
+
+```js
+ 
+// 创建的工厂函数可以导出使用，更加简洁方便
+export function createTodo(title: string, content: string = "这是一个 todo 的内容") {
+  return {
+    title,
+    content,
+    state: State.active,
+  };
+}
+
+it("normal addTodo", () => {
+    // given
+    // 中高层次的代码
+    // const todo = createTodo("吃饭");
+    // todo.content = "nihaoya";
+    // todo.state = State.removed
+
+    const todo = createRemovedTodo();
+
+    // when
+    addTodo(todo);
+
+    // then
+    expect(todos[0]).toEqual(todo);
+  });
+  it(" addTodo with top command", () => {
+    // given
+    const todo = createTodo("吃饭", "dddd");
+
+    // when
+    addTodo(todo);
+
+    // then
+    expect(todos[0].title).toEqual("吃饭");
+  });
+
+  it(" addTodo with reverse command", () => {
+    // given
+    const todo = createTodo("吃饭");
+
+    // when
+    addTodo(todo);
+
+    // then
+    expect(todos[0].title).toEqual("饭吃");
+  });
+```
+
+## 4、最小准备测试数据原则
+
+> 注意：尽量准备数据的时候，不要准备与程序无关的
+
+```js
+describe("User", () => {
+  it("should buy a product", () => {
+    // 准备测试数据 - 包含无关的信息
+    const user = new User("Alice", 25, "alice@example.com", "123 Main St");
+    const product = new Product("Book", 15, "A great book on software testing");
+
+    // 测试购买功能
+    const result = user.buy(product);
+    const expectedResult = "User Alice bought Book";
+
+    expect(result).toBe(expectedResult);
+  });
+
+  it("should buy a product", () => {
+    const user = new User("Cxr", 18, "cuixiaorui@heihei.com", "beijing");
+    const product = new Product("Book", 15, "a great book on frontEnd testing");
+
+    const result = user.buy(product);
+
+    expect(result).toBe("User Cxr bought Book");
+  });
+  it("v1.0 修改业务代码本身的逻辑 ", () => {
+    // 测试也是业务代码的用户之一
+    // 测试可以驱动我们程序的设计
+    const user = new User("Cxr");
+    const product = new Product("Book");
+
+    const result = user.buy(product);
+
+    expect(result).toBe("User Cxr bought Book");
+  });
+  it("v2.0 委托 工厂函数 来隐藏不需要关心的属性", () => {
+    // 委托 来去隐藏不需要关心的属性
+    const user = createUser("Cxr");
+    const product = createProduct("Book");
+
+    const result = user.buy(product);
+
+    expect(result).toBe("User Cxr bought Book");
+  });
+
+  it("v3.0 虚拟对象的方式", () => {
+    // 虚拟对象的方式
+    const user = new User("Cxr");
+    const product = { name: "Book" } as Product;
+
+    const result = user.buy(product);
+
+    expect(result).toBe("User Cxr bought Book");
+  });
+});
+
+function createUser(name: string) {
+  return new User(name, 18, "cuixiaorui@heihei.com", "beijing");
+}
+
+function createProduct(name: string) {
+  return new Product(name, 15, "a great book on frontEnd testing");
+}
+```
+
+# 十三、程序的间接输入
 
 ## 1、依赖函数调用-stub的应用
 
+- **调用其他模块获取数据、也有可能是通过API获取的**
 
+```js
+import { fetchUserAge, userAge } from "./user";
+
+// 直接 input
+function add(a: number, b: number) {
+  return a + b;
+}
+
+// 间接的 input
+export function doubleUserAge(): number {
+  return userAge() * 2;
+}
+export async function fetchDoubleUserAge(): Promise<number> {
+  const userAge = await fetchUserAge();
+  return userAge * 2;
+}
+
+export function userAge() {
+  // api
+  //  return user.age
+  return 4;
+}
+
+// api.js
+export function fetchUserAge(): Promise<number> {
+  return new Promise((resolve, reject) => {
+    setTimeout(() => {
+      return resolve(18);
+    }, 0);
+  });
+}
+```
+
+- 解决：使用`vi.mock`
+
+  **1、通过去控制间接输入的值** `（推荐）`
+
+```js
+import { beforeEach, vi, it, expect, describe } from 'vitest';
+// 替换掉真实的逻辑实现
+vi.mock("./user", () => {
+  return {
+    fetchUserAge: () => Promise.resolve(2),
+  };
+});
+describe("间接input", () => {
+  it("first", async () => {
+    const r = await fetchDoubleUserAge();
+    expect(r).toBe(4);
+  });
+});
+```
+
+注意：`vi.mock`会被提到顶部执行
+
+**2、在内部改写**
+
+```js
+import { beforeEach, vi, it, expect, describe } from 'vitest';
+vi.mock("./user");
+describe("间接input", () => {
+  it("first", async () => {
+    vi.mocked(userAge).mockReturnValue(2);
+    expect(userAge()).toBe(2);
+  });
+});
+
+```
+
+**3、**`vi.doMock`的方式
+
+```js
+describe("间接input", () => {
+     beforeEach(() => {
+      vi.doMock("./user", () => {
+         return {
+           userAge: () => 2,
+         };
+       });
+     });
+  it("first", async () => {
+    const { doubleUserAge } = await import("./index");
+    const r = await fetchDoubleUserAge();
+    expect(r).toBe(4);
+  });
+});
+
+```
 
 ## 2、第三方库、对象、class、常量
 
+### 1、第三方模式的处理 如 `axios`
+
+比如我们需要通过`axios`去获取数据
+
+```js
+// third-party-modules.ts
+import axios from "axios";
+
+interface User {
+  name: string;
+  age: number;
+}
+
+export async function doubleUserAge() {
+  // 调用了第三方模块
+  // const user: User = await axios("/user/1");
+  // 对象  让你直接调用对象上的方法
+  const user: User = await axios.get("/user/1");
+  return user.age * 2;
+}
+```
+
+我们可以使用`vi.mock`去模拟`get`请求的返回值，使用`mockResolvedValue`方法
+
+```js
+import { test, vi, expect } from "vitest";
+import { doubleUserAge } from "./third-party-modules";
+import axios from "axios";
+
+vi.mock("axios");
+
+test("第三方模式的处理 axios", async () => {
+  // vi.mocked(axios).mockResolvedValue({ name: "cxr", age: 18 });
+  vi.mocked(axios.get).mockResolvedValue({ name: "cxr", age: 18 });
+
+  const r = await doubleUserAge();
+
+  expect(r).toBe(36);
+});
+```
+
+### 2、使用class的形式
+
+例如我们使用class的方式去获取返回值
+
+```js
+// User.ts
+export class User {
+  age: number = 18;
+  name:string = "cxr"
+
+  getAge(){
+    return this.age
+  }
+}
+// use-class.ts
+import { User } from "./User";
+
+export function doubleUserAge(): number {
+  const user = new User();
+  console.log(user)
+
+  // return user.getAge() * 2;
+  return user.age * 2
+}
+```
+
+我们可以使用`vi.mock`去模拟`class`，或者直接修改类的`prototype`
+
+```js
+import { it, expect, describe, vi } from "vitest";
+import { doubleUserAge } from "./use-class";
+
+// 二 是使用vi.mock
+vi.mock("./User", async (importOriginal) => {
+  return {
+    User: class {
+      age = 2
+    },
+  };
+});
+
+describe("使用class的形式", () => {
+  it("user age", () => {
+    // given
+
+    // 一个是修改方法
+    // User.prototype.getAge = () => 2;
+
+    // when
+    const age = doubleUserAge();
+
+    // then
+    expect(age).toBe(4);
+  });
+});
+```
+
+### 3、使用对象的形式
+
+```js
+// use-object.ts
+import { config } from "./config";
+
+export function tellAge() {
+  if (config.allowTellAge) {
+    return 18;
+  }
+
+  return "就不告诉你";
+}
+```
+
+这个比较简单，我们直接设置对象的值为`true`即可
+
+```js
+import { it, expect, describe, vi } from "vitest";
+import { tellAge } from "./use-object";
 
 
-## 3、依赖注入
+describe("使用对象的形式", () => {
+  it("allow ", () => {
+
+    config.allowTellAge = true;
+
+    const age = tellAge();
+
+    expect(age).toBe(18);
+  });
+});
+```
+
+### 4、使用变量的方式
+
+
+
+```js
+// config.ts
+export const name = "cxr"
+export const gold = 3
+
+// use-variable.ts
+import { name } from "./config";
+
+export function tellName() {
+  return name + "-heiheihei";
+}
+```
+
+这里我们使用`vi.mock`给我们提供的`importOriginal`参数字段来重新赋值这个文件
+
+```js
+import { it, expect, describe, vi } from "vitest";
+import { tellName } from "./use-variable";
+import { name, gold } from "./config";
+
+vi.mock("./config", async (importOriginal) => {
+  return { ...await importOriginal() as any, name: "xiaohong" };
+});
+
+describe("使用变量的形式", () => {
+  it("tell name ", () => {
+    console.log(gold);
+    // when
+    const name = tellName();
+
+    // then
+    expect(name).toBe("xiaohong-heiheihei");
+  });
+});
+```
+
+## 3、环境变量-全局`global`
+
+### 1、环境变量
+
+```js
+// env.ts
+export function doubleUserAge() {
+  return process.env.USER_AGE;
+}
+```
+
+使用`vi.stubEnv`去设置`env`的数据，注意：需要在初始的时候清空使用`vi.unstubAllEnvs`或者使用后清空
+
+```js
+import { beforeEach, it, expect, vi, describe } from "vitest";
+import { doubleUserAge } from "./env";
+
+beforeEach(() => {
+  vi.unstubAllEnvs();
+});
+
+it("process", () => {
+  vi.stubEnv("USER_AGE", "99");
+  //   import.meta.env  vite webpack
+  //   process.env.USER_AGE = "15";
+  const r = doubleUserAge();
+
+  console.log(r);
+
+  vi.unstubAllEnvs();
+});
+
+it("second", () => {
+  const r = doubleUserAge();
+
+  console.log(r);
+});
+```
+
+这里还有`import`导入,这里我们可以使用`vi.stubEnv`或者使用`vi.mock`
+
+```js
+import { vi, it, expect } from "vitest";
+import { doubleUserAge, doubleUserAgeNew } from "./user";
+import { userAge } from "./env";
+
+vi.mock("./env");
+
+it("doubleUserAge", () => {
+  vi.stubEnv("VITE_USER_AGE", "99");
+
+  const r = doubleUserAge();
+
+  expect(r).toBe(198);
+
+  vi.unstubAllEnvs();
+});
+
+it("doubleUserAgeNew", () => {
+  vi.mocked(userAge).mockReturnValue(2);
+
+  const r = doubleUserAgeNew();
+
+  expect(r).toBe(4);
+});
+```
+
+### 2、全局变量
+
+很简单,通过`process.env`去获取就好
+
+```js
+// user.ts
+export function doubleUserAge() {
+  const userAge = localStorage.getItem("userAge");
+  return Number(userAge) * 2;
+}
+
+export function doubleInnerWidth() {
+  return innerWidth * 2;
+}
+```
+
+这里使用`vi.stubGlobal`去设置全局变量
+
+```js
+import { vi, it, expect } from "vitest";
+import { doubleInnerWidth, doubleUserAge } from "./user";
+
+it("doubleUserAge", () => {
+  const r = doubleUserAge();
+
+  expect(r).toBe(36);
+});
+
+it("double innerWidth", () => {
+  // window
+  vi.stubGlobal("innerWidth", 200);
+
+  const r = doubleInnerWidth();
+
+  expect(r).toBe(400);
+});
+
+```
+
+## 4、依赖注入
+
+首先我们看看两个原则：
+
+依赖倒置原则（Dependency Inversion Principle，简称DIP）是面向对象设计中的一个原则，它是SOLID原则中的一部分。DIP的核心思想是高层模块不应该依赖于低层模块，而是应该依赖于抽象接口。
+
+程序接缝（Seams）是指在软件系统中可以插入变化的地方，也可以理解为在代码中可以进行修改的位置。程序接缝是敏捷开发中的一个重要概念，它有助于提高代码的可测试性、可扩展性和可维护性。
 
 
 

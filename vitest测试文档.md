@@ -805,41 +805,41 @@ describe("User", () => {
   });
 
   it("should buy a product", () => {
-    const user = new User("Cxr", 18, "cuixiaorui@heihei.com", "beijing");
+    const user = new User("oldTimer", 18, "cuixiaorui@heihei.com", "beijing");
     const product = new Product("Book", 15, "a great book on frontEnd testing");
 
     const result = user.buy(product);
 
-    expect(result).toBe("User Cxr bought Book");
+    expect(result).toBe("User oldTimer bought Book");
   });
   it("v1.0 修改业务代码本身的逻辑 ", () => {
     // 测试也是业务代码的用户之一
     // 测试可以驱动我们程序的设计
-    const user = new User("Cxr");
+    const user = new User("oldTimer");
     const product = new Product("Book");
 
     const result = user.buy(product);
 
-    expect(result).toBe("User Cxr bought Book");
+    expect(result).toBe("User oldTimer bought Book");
   });
   it("v2.0 委托 工厂函数 来隐藏不需要关心的属性", () => {
     // 委托 来去隐藏不需要关心的属性
-    const user = createUser("Cxr");
+    const user = createUser("oldTimer");
     const product = createProduct("Book");
 
     const result = user.buy(product);
 
-    expect(result).toBe("User Cxr bought Book");
+    expect(result).toBe("User oldTimer bought Book");
   });
 
   it("v3.0 虚拟对象的方式", () => {
     // 虚拟对象的方式
-    const user = new User("Cxr");
+    const user = new User("oldTimer");
     const product = { name: "Book" } as Product;
 
     const result = user.buy(product);
 
-    expect(result).toBe("User Cxr bought Book");
+    expect(result).toBe("User oldTimer bought Book");
   });
 });
 
@@ -981,8 +981,8 @@ import axios from "axios";
 vi.mock("axios");
 
 test("第三方模式的处理 axios", async () => {
-  // vi.mocked(axios).mockResolvedValue({ name: "cxr", age: 18 });
-  vi.mocked(axios.get).mockResolvedValue({ name: "cxr", age: 18 });
+  // vi.mocked(axios).mockResolvedValue({ name: "oldTimer", age: 18 });
+  vi.mocked(axios.get).mockResolvedValue({ name: "oldTimer", age: 18 });
 
   const r = await doubleUserAge();
 
@@ -998,7 +998,7 @@ test("第三方模式的处理 axios", async () => {
 // User.ts
 export class User {
   age: number = 18;
-  name:string = "cxr"
+  name:string = ""
 
   getAge(){
     return this.age
@@ -1087,7 +1087,7 @@ describe("使用对象的形式", () => {
 
 ```js
 // config.ts
-export const name = "cxr"
+export const name = "oldTimer"
 export const gold = 3
 
 // use-variable.ts
@@ -1235,44 +1235,578 @@ it("double innerWidth", () => {
 
 程序接缝（Seams）是指在软件系统中可以插入变化的地方，也可以理解为在代码中可以进行修改的位置。程序接缝是敏捷开发中的一个重要概念，它有助于提高代码的可测试性、可扩展性和可维护性。
 
+接下来看下面的例子：
+
+`DLL-function`
+
+```js
+// readAndProcessFile.ts
+export interface FileReader {
+  read(filePath: string): string;
+}
+
+export function readAndProcessFile(
+  filePath: string,
+  fileReader: FileReader
+): string {
+  const content: string = fileReader.read(filePath);
+  // 在实际的场景下可能 process 的过程会更复杂一点
+  return content + "-> test unit";
+}
+// index.ts
+import { readAndProcessFile, FileReader } from "./readAndProcessFile";
+import { readFileSync } from "fs";
+
+class TextFileReader implements FileReader {
+  read(filePath: string) {
+    return readFileSync(filePath, { encoding: "utf-8" });
+  }
+}
+
+const result = readAndProcessFile("example.txt", new TextFileReader());
+
+console.log(result);
+```
+
+**测试方案**
+
+```js
+import { it, expect, describe } from "vitest";
+import { readAndProcessFile, FileReader } from "./readAndProcessFile";
+
+describe("di function", () => {
+  it("read and process file", () => {
+    class StubFileReader implements FileReader {
+      read() {
+        return "oldTimer";
+      }
+    }
+
+    const result = readAndProcessFile("./test", new StubFileReader());
+
+    expect(result).toBe("oldTimer-> test unit");
+  });
+});
+
+```
+
+`DLL-class`:这里分为三种，构造器、属性、以及方法
+
+构造器：
+
+```js
+export interface FileReader {
+  read(filePath: string): string;
+}
+
+// 构造器
+export class ReadAndProcessFile {
+  private fileReader: FileReader;
+  constructor(fileReader: FileReader) {
+    // fileReader 是个必选项
+    this.fileReader = fileReader;
+  }
+  run(filePath: string) {
+    //     const content = readFileSync(filePath, { encoding: "utf-8" });
+    const content = this.fileReader.read(filePath);
+
+    return content + "->unit test";
+  }
+}
+```
+
+```js
+import { it, expect, describe } from "vitest";
+import { FileReader, ReadAndProcessFile } from "./ReadAndProcessFile";
+
+describe("di - class", () => {
+    it("构造器", () => {
+      class StubFileReader implements FileReader {
+        read(filePath: string): string {
+          return "oldTimer";
+        }
+      }
+
+      const readAndProcessFile = new ReadAndProcessFile(new StubFileReader());
+
+      expect(readAndProcessFile.run("./test")).toBe("oldTimer->unit test");
+    });
+});
+
+```
+
+属性
+
+```js
+export class ReadAndProcessFile {
+  run(filePath: string) {
+    const content = this.fileReader.read(filePath);
+    return content + "->unit test";
+  }
+
+  private _fileReader: FileReader;
+  get fileReader(): FileReader {
+    return this._fileReader;
+  }
+
+  set fileReader(fileReader: FileReader) {
+    this._fileReader = fileReader;
+  }
+}
+```
+
+```js
+  it("属性", () => {
+    class StubFileReader implements FileReader {
+      read(filePath: string): string {
+        return "oldTimer";
+      }
+    }
+
+    const readAndProcessFile = new ReadAndProcessFile();
+    readAndProcessFile.fileReader = new StubFileReader();
+
+    expect(readAndProcessFile.run("./test")).toBe("oldTimer->unit test");
+  });
+```
+
+方法
+
+```js
+export class ReadAndProcessFile {
+  run(filePath: string) {
+    const content = this._fileReader.read(filePath);
+    return content + "->unit test";
+  }
+
+  private _fileReader: FileReader;
+  setFileReader(fileReader: FileReader) {
+    this._fileReader = fileReader;
+  }
+}
+```
+
+```js
+  it("方法", () => {
+    class StubFileReader implements FileReader {
+      read(filePath: string): string {
+        return "oldTimer";
+      }
+    }
+
+    const readAndProcessFile = new ReadAndProcessFile();
+    readAndProcessFile.setFileReader(new StubFileReader());
+
+    expect(readAndProcessFile.run("./test")).toBe("oldTimer->unit test");
+  });
+```
+
+# 十四、行为验证
+
+这里主要讲的是对于函数的调用次数，以及函数参数等验证
+
+这里举得例子是登录接口
+
+```js
+import { phoneLogin } from "xxx/api";
+
+const state = {
+  tipString: "",
+};
+
+export function login(username: string, password: string) {
+  phoneLogin(username, password);
+}
+
+export function loginV2(username: string, password: string) {
+  const isLogin = phoneLogin(username, password);
+
+  if (isLogin) {
+    state.tipString = "登录成功拉";
+  }
+}
+
+export function getTip() {
+  return state.tipString;
+}
+```
+
+接下来看看我们是怎么测试这个登录接口的
+
+```js
+import { vi, it, expect, describe } from "vitest";
+import { login, loginV2, getTip } from "./login";
+import { phoneLogin } from "xxx/api";
+
+// mock
+vi.mock("cxr", () => {
+  return {
+    // phoneLogin: vi.fn().mockReturnValue(true),
+    phoneLogin: vi.fn(()=> true)
+  };
+});
+
+describe("login", () => {
+  it("should called login function from cxr  ", async () => {
+    login("phone", "jiubugaosuni");
+
+    expect(cxrLogin).toBeCalled();
+    // expect(cxrLogin).toBeCalledWith("phone", "jiubugaosuni");
+    // expect(cxrLogin).toBeCalledTimes(1);
+  });
+
+  it("v2", () => {
+    loginV2("phone", "jiubugaosuni");
+
+    expect(phoneLogin).toBeCalled();
+    expect(getTip()).toBe("登录成功拉");
+  });
+});
+```
+
+这里使用`vi.mock`去对接口重写，并且使用`toBeCalled`、`toBeCalledWith`、`toBeCalledTimes`等来验证该函数是否调用，调用参数是什么，一共调用了几次。
+
+# 十五、不知道验证什么-完美主义、功能的目的、小步走-TDD思想
+
+TDD（Test-Driven Development）是一种软件开发方法论，它强调在编写代码之前编写测试用例。其核心思想是通过编写测试用例来驱动代码的开发，以确保代码的正确性和可靠性。
+
+我们只需要记住我们的目标是什么，然后小步走的思想，一个一个去完成，不要一开始就想把所有东西都弄好，这是不现实的。TDD的思想可以应用在我们生活之间
+
+比如下面有一个函数，验证是否是http地址，我们需要如何测试呢
+
+```js
+// url http
+// url https
+// url ""
+// url "dslkfj"
+// url "123"
+// url 
+export function isHttp(url: string): boolean {
+  const pattern = /^http:\/\/www\./;
+  return pattern.test(url);
+}
+```
+
+我们只需要编写最小化的代码，因为不可能完美的去写出每个过程，所以，尽可能的写出我们想到的部分，其他的测试出来的问题，我们再去加就好了，不要被完美主义作祟。
+
+```js
+import { describe, it, expect } from "vitest";
+import { isHttp } from "./utils";
+
+describe("isHttp", () => {
+  it("should return true for the specific case: http://www.baidu.com", () => {
+    const url = "http://www.baidu.com";
+    expect(isHttp(url)).toBeTruthy();
+  });
+
+  it("should return false for non-http URLs", () => {
+    const url = "https://www.google.com";
+    expect(isHttp(url)).toBeFalsy();
+  });
+  it("should return false for non-http URLs", () => {
+    const url = "";
+    expect(isHttp(url)).toBeFalsy();
+  });
+});
+```
+
+# 十六、可预测性-随机数-日期date
+
+**随机数**
+
+这里如何对随机数进行验证呢？因为随机数一直是变化的
+
+```js
+/**
+ * 基于 Math.random 生成一个随机字符串
+ * @param length 字符串长度
+ * @returns 生成的随机字符串
+ */
+export function generateRandomString(length: number): string {
+  let result = "";
+  const characters = "abcdefghijklmnopqrstuvwxyz";
+  for (let i = 0; i < length; i++) {
+    const randomIndex = Math.floor(Math.random() * characters.length); // 生成 0 到字符串长度之间的随机整数
+    result += characters.charAt(randomIndex); // 将指定位置上的字符添加到结果字符串中
+  }
+  return result;
+}
+```
+
+验证
+
+通过`vi.spyOn`去模拟`Math.random`方法并且固定返回它的值为0.1和0.2
+
+```js
+import { vi, it, expect, describe } from "vitest";
+import { generateRandomString } from "./random";
+
+describe("Math.random", () => {
+  it("should generate random string", () => {
+    //     vi.spyOn(Math, "random").mockImplementation(() => {
+    //       return 0.1;
+    //     });
+    vi.spyOn(Math, "random").mockImplementationOnce(() => {
+      return 0.1;
+    });
+    vi.spyOn(Math, "random").mockImplementationOnce(() => {
+      return 0.2;
+    });
+
+    const result = generateRandomString(2);
+
+    expect(result).toBe("fc");
+  });
+});
+```
+
+**日期函数**
+
+这里如何对日期进行验证呢？因为日期一直是变化的
+
+```js
+/**
+ * 检测今天是否为周五
+ * @returns 如果今天是周五返回 "开心"，否则返回 "不开心"
+ */
+export function checkFriday(): string {
+  const today = new Date();
+  console.log(today.getDay());
+  if (today.getDay() === 5) {
+    return "happy";
+  } else {
+    return "sad";
+  }
+}
+```
+
+验证
+
+这里使用的是模拟定时器，使用`vi.useFakeTimers()`,注意：这里在测试结束后需要使用`vi.useRealTimers();`移除掉，然后我们使用`vi.setSystemTime(new Date(2023, 3, 21));`去设置系统时间
+
+```js
+import { beforeEach, afterEach, vi, it, expect, describe } from "vitest";
+import { checkFriday } from "./date";
+
+describe("date", () => {
+  beforeEach(() => {
+    vi.useFakeTimers();
+  });
+
+  afterEach(() => {
+    vi.useRealTimers();
+  });
+  it("should be happy when it's Friday", () => {
+    vi.setSystemTime(new Date(2023, 3, 21));
+
+    const result = checkFriday();
+
+    expect(result).toBe("happy");
+  });
+  it("should be sad when it's not Friday", () => {
+    vi.setSystemTime(new Date(2023, 3, 22));
+
+    const result = checkFriday();
+
+    expect(result).toBe("sad");
+  });
+  it("third", () => {
+    checkFriday();
+  });
+});
+
+```
+
+# 十七、快速反馈-处理异步代码time、promise
+
+**定时器与延时器**
+
+```js
+export function sayHi() {
+  setTimeout(() => {
+    setInterval(() => {
+      console.log("hi");
+    }, 100);
+  }, 1000);
+}
+```
+
+```js
+export class User {
+  id: string;
+
+  constructor(id: string) {
+    this.id = id;
+  }
+
+  fetchData(callback: (data: string) => void, delay: number): void {
+    setTimeout(() => {
+      const data = `Data for user with id: ${this.id}`;
+      callback(data);
+    }, delay);
+  }
+
+  fetchDataV2(callback: (data: string) => void): void {
+    setTimeout(() => {
+      const data = `Data for user with id: ${this.id}`;
+      callback(data);
+    }, 2000);
+  }
+}
+```
+
+验证
+
+这里我们也是使用`vi.useFakeTimers();`去模拟定时器，这里我们有两种方式去进行验证，第一种就是使用`vi.advanceTimersToNextTimer()`，`vi.advanceTimersByTime(1100);`这个是设置定时器的时间,第二种就是使用`vi.spyOn(console, "log");`去模拟打印方法，这种是比较推荐的
+
+```js
+import { vi, it, expect, describe } from "vitest";
+import { sayHi } from "./setInterval";
+
+describe("setInterval", () => {
+  it("should call one", () => {
+    vi.useFakeTimers();
+    vi.spyOn(console, "log");
+    sayHi();
+    //     vi.advanceTimersToNextTimer()
+    //     vi.advanceTimersToNextTimer()
+	//     vi.advanceTimersByTime(1100);
+
+    expect(console.log).toBeCalledWith("hi");
+  });
+});
+```
+
+```js
+import { vi, it, expect, describe } from "vitest";
+import { User } from "./setTimeout";
+
+describe("setTimeout", () => {
+  it("should fetch User data", () => {
+    vi.useFakeTimers();
+    const user = new User("1");
+
+    const callback = vi.fn();
+    user.fetchDataV2(callback);
+    // vi.advanceTimersByTime(1000)
+    // vi.advanceTimersToNextTimer();
+
+    const userA = new User("1");
+
+    const callbackA = vi.fn();
+    userA.fetchDataV2(callbackA);
+    // vi.advanceTimersToNextTimer();
+
+    vi.runAllTimers();
+
+    expect(callback).toBeCalledWith("Data for user with id: 1");
+    expect(callbackA).toBeCalledWith("Data for user with id: 1");
+  });
+});
+```
+
+**promise**
+
+```js
+export class View {
+  count: number = 1;
+  render() {
+    Promise.resolve()
+      .then(() => {
+        this.count = 2;
+      })
+      .then(() => {
+        this.count = 3;
+      });
+  }
+}
+
+export function fetchUserData() {
+  return new Promise((resolve, reject) => {
+    resolve("1");
+  });
+}
+
+export function delay(time: number) {
+  return new Promise((resolve, reject) => {
+    setTimeout(() => {
+      resolve("ok");
+    }, time);
+  });
+}
+```
+
+验证
+
+```js
+import { vi, it, expect, describe } from "vitest";
+import { delay, fetchUserData } from "./index";
+
+describe("Promise", () => {
+  it("normal", async () => {
+    const result = await fetchUserData();
+
+    expect(result).toBe("1");
+  });
+
+  it("delay", async () => {
+    vi.useFakeTimers();
+    //     vi.advanceTimersToNextTimer()
+    //     const result = await delay(1000);
+    const result = delay(100);
+    vi.advanceTimersToNextTimer();
+
+    expect(result).resolves.toBe("ok");
+  });
+});
+```
+
+第二种是结合`flush-promises`这个库来使用
+
+```js
+import { it, expect, describe } from "vitest";
+import { View } from "./view";
+import flushPromises from "flush-promises";
+
+describe("View", () => {
+  it("should change count", async () => {
+    const view = new View();
+
+    view.render();
+    await flushPromises();
+
+    expect(view.count).toBe(3);
+  });
+});
+
+```
+
+# 十八、API的多种测试方案
 
 
-# 十六、状态验证
 
+# 十九、参数化验证
 
+# 二十、手动测试到单元测试的认知转变
 
-# 十七、行为验证
+# 二十一、测试的基本策略-正向测试、反向测试、异常测试
 
-# 十八、不知道验证什么-完美主义、功能的目的、小步走-TDD思想
+# 二十二、不是所有代码都值得写测试
 
-# 十九、可预测性-随机数-日期date
+# 二十三、掌握使用test double 测试替身的核心思想
 
-# 二十、快速反馈-处理异步代码time、promise
+# 二十四、独居测试和群居测试
 
-# 二十一、API的多种测试方案
+# 二十五、测试的拆卸
 
-# 二十二、参数化验证
+# 二十六、`Vitest`模拟浏览器环境和自定义环境
 
-# 二十三、手动测试到单元测试的认知转变
+# 二十七、给测试命名的艺术
 
-# 二十四、测试的基本策略-正向测试、反向测试、异常测试
+# 二十八、调用同一模块内的函数会mock失败
 
-# 二十五、不是所有代码都值得写测试
+# 二十八、`snapshot` 快照测试
 
-# 二十六、掌握使用test double 测试替身的核心思想
+# 二十九、`Vitest`实战之`Vue`
 
-# 二十七、独居测试和群居测试
-
-# 二十八、测试的拆卸
-
-# 二十九、`Vitest`模拟浏览器环境和自定义环境
-
-# 三十、给测试命名的艺术
-
-# 三十一、调用同一模块内的函数会mock失败
-
-# 三十二、`snapshot` 快照测试
-
-# 三十二、`Vitest`实战之`Vue`
-
-# 三十三、`Vitest`实战 - 推箱子
+# 三十、`Vitest`实战 - 推箱子

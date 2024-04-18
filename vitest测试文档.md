@@ -1783,30 +1783,376 @@ describe("View", () => {
 
 # 十八、API的多种测试方案
 
+## 1、直接`mock axios`
 
+直接上代码,通过直接对`axios`进行`mock`来定义返回结果---------**不推荐使用**
+
+```ts
+import { test, expect, vi } from "vitest";
+import { useTodoStore } from "./todo";
+import { setActivePinia, createPinia } from "pinia";
+import axios from "axios";
+
+vi.mock("axios");
+
+test("add todo", async () => {
+  // 准备数据
+  vi.mocked(axios.post).mockImplementation((path, { title }: any) => {
+    return Promise.resolve({
+      data: { data: { todo: { id: 1, title } }, state: 1 },
+    });
+  });
+  setActivePinia(createPinia());
+  const todoStore = useTodoStore();
+  const title = "吃饭";
+
+  // 调用
+  await todoStore.addTodo(title);
+
+  // 验证
+  expect(todoStore.todos[0].title).toBe(title);
+});
+
+test("should not add todo when title is empty string", async () => {
+  setActivePinia(createPinia());
+  const todoStore = useTodoStore();
+  const title = "";
+
+  // 调用
+  await todoStore.addTodo(title);
+
+  // 验证
+  expect(todoStore.todos.length).toBe(0);
+});
+
+test("remove todo", async () => {
+  vi.mocked(axios.post).mockImplementationOnce((path, { title }: any) => {
+    return Promise.resolve({
+      data: { data: { todo: { id: 1, title } }, state: 1 },
+    });
+  });
+  vi.mocked(axios.post).mockImplementationOnce((path, { id }: any) => {
+    return Promise.resolve({
+      data: { data: { id }, state: 1 },
+    });
+  });
+
+  setActivePinia(createPinia());
+  const todoStore = useTodoStore();
+  const todo = await todoStore.addTodo("吃饭"); // round-trip
+
+  // 调用
+  await todoStore.removeTodo(todo!.id);
+
+  // 验证
+  expect(todoStore.todos.length).toBe(0);
+});
+
+test("should throw error when removed id does not exist ", async () => {
+  // 准备数据
+  vi.mocked(axios.post).mockImplementationOnce((path, { id }: any) => {
+    return Promise.resolve({
+      data: { data: null, state: 0 },
+    });
+  });
+
+  setActivePinia(createPinia());
+  const todoStore = useTodoStore();
+
+  expect(async () => {
+    // 调用
+    await todoStore.removeTodo(2);
+    // 抛出一个错误
+  }).rejects.toThrowError("id:2 不存在");
+});
+
+test("update todo list", async () => {
+  const todoList = [{ id: 1, title: "写代码" }];
+  vi.mocked(axios.get).mockResolvedValue({ data: { data: { todoList } } });
+
+  setActivePinia(createPinia());
+  const todoStore = useTodoStore();
+  await todoStore.updateTodoList();
+
+  expect(todoStore.todos[0].title).toBe("写代码");
+});
+
+```
+
+## 2、mock中间层
+
+这个的意思指的是，只对行为进行验证，行为产生的结果进行`mock`-----------**推荐使用**
+
+```ts
+import { test, expect, vi } from "vitest";
+import { useTodoStore } from "./todo";
+import { setActivePinia, createPinia } from "pinia";
+import { fetchAddTodo, fetchRemoveTodo, fetchTodoList } from "../api";
+
+vi.mock("../api");
+
+// SUT  create list
+// create list
+// add todo to todos , todos' length is 1
+test("should add todo to the list when successful", async () => {
+  // 准备数据
+  vi.mocked(fetchAddTodo).mockImplementation((title) => {
+    return Promise.resolve({
+      data: { todo: { id: 1, title } },
+      state: 1,
+    });
+  });
+  setActivePinia(createPinia());
+  const todoStore = useTodoStore();
+  const title = "吃饭";
+
+  // 调用
+  await todoStore.addTodo(title);
+
+  // 验证
+  expect(todoStore.todos[0].title).toBe(title);
+
+
+});
+
+test("should not be added todo when network is error", async () => {
+  // 准备数据
+  vi.mocked(fetchAddTodo).mockImplementation((title) => {
+    return Promise.reject("network error");
+  });
+  setActivePinia(createPinia());
+  const todoStore = useTodoStore();
+  const title = "吃饭";
+
+  // 调用
+  expect(async () => {
+    await todoStore.addTodo(title);
+  }).rejects.toThrowError("network error");
+});
+
+test("should not add a todo when title is empty", async () => {
+  // 准备数据
+  setActivePinia(createPinia());
+  const todoStore = useTodoStore();
+  const title = "";
+
+  // 调用
+  await todoStore.addTodo(title);
+
+  // 验证
+  expect(todoStore.todos.length).toBe(0);
+});
+
+test("remove todo when todo is", async () => {
+  // 准备数据
+  vi.mocked(fetchAddTodo).mockImplementation((title) => {
+    return Promise.resolve({
+      data: { todo: { id: 1, title } },
+      state: 1,
+    });
+  });
+  vi.mocked(fetchRemoveTodo).mockImplementationOnce((id) => {
+    return Promise.resolve({
+      data: { id },
+      state: 1,
+    });
+  });
+
+  setActivePinia(createPinia());
+  const todoStore = useTodoStore();
+  const todo = await todoStore.addTodo("吃饭"); // round-trip
+
+  // 调用
+  await todoStore.removeTodo(todo!.id);
+
+  // 验证
+  expect(todoStore.todos.length).toBe(0);
+});
+
+test("should throw a error when removed id does not exist", async () => {
+  // 准备数据
+  vi.mocked(fetchRemoveTodo).mockImplementationOnce(() => {
+    return Promise.resolve({
+      data: null,
+      state: 0,
+    });
+  });
+
+  setActivePinia(createPinia());
+  const todoStore = useTodoStore();
+
+  // 调用
+  expect(async () => {
+    await todoStore.removeTodo(2);
+  }).rejects.toThrowError("id:2 does not exist");
+});
+
+test("update todo list", async () => {
+  const todoList = [{ id: 1, title: "写代码" }];
+  vi.mocked(fetchTodoList).mockResolvedValue({ data: { todoList } });
+
+  setActivePinia(createPinia());
+  const todoStore = useTodoStore();
+  await todoStore.updateTodoList();
+
+  expect(todoStore.todos[0].title).toBe("写代码");
+});
+
+```
+
+## 3、使用mock server worker
+
+这里指的是使用`msw`这个库来mock返回结果，相当于利用中间件去测试
+
+缺点：就是需要去学习新的库，不太推荐使用
+
+```ts
+import { beforeAll, afterEach, afterAll, test, expect} from "vitest";
+import { useTodoStore } from "./todo";
+import { setActivePinia, createPinia } from "pinia";
+import { server } from "../mocks/server";
+import { mockAddTodo, mockRemoveTodo, mockTodoList } from "../mocks/handlers";
+
+
+test.todo("sad path")
+
+test("add todo", async () => {
+  // koa express
+  server.use(mockAddTodo());
+
+  setActivePinia(createPinia());
+  const todoStore = useTodoStore();
+  const title = "吃饭";
+
+  // 调用
+  await todoStore.addTodo(title);
+
+  // 验证
+  expect(todoStore.todos[0].title).toBe(title);
+});
+
+test("remove todo", async () => {
+  server.use(mockAddTodo(), mockRemoveTodo());
+
+  setActivePinia(createPinia());
+  const todoStore = useTodoStore();
+  const todo = await todoStore.addTodo("吃饭"); // round-trip
+
+  // 调用
+  await todoStore.removeTodo(todo!.id);
+
+  // 验证
+  expect(todoStore.todos.length).toBe(0);
+});
+
+test("update todo list", async () => {
+  const todoList = [{ id: 1, title: "写代码" }];
+  server.use(mockTodoList(todoList));
+
+  setActivePinia(createPinia());
+  const todoStore = useTodoStore();
+  await todoStore.updateTodoList();
+
+  expect(todoStore.todos[0].title).toBe("写代码");
+});
+
+```
 
 # 十九、参数化验证
 
-# 二十、手动测试到单元测试的认知转变
+> 提供在多个测试case中复用相同的测试逻辑的方法
 
-# 二十一、测试的基本策略-正向测试、反向测试、异常测试
+比如我们想去验证一个正则表达式
 
-# 二十二、不是所有代码都值得写测试
+```ts
+export function emailValidator(email: string): boolean {
+  const regex = /^[\w-]+(\.[\w-]+)*@([\w-]+\.)+[a-zA-Z]{2,7}$/;
+  return regex.test(email);
+}
 
-# 二十三、掌握使用test double 测试替身的核心思想
+```
 
-# 二十四、独居测试和群居测试
+可能我们的测试case非常多,可以看到非常多重复的case
 
-# 二十五、测试的拆卸
+```ts
+import { emailValidator } from "./emailValidator"
+import { it, expect, describe } from "vitest"
 
-# 二十六、`Vitest`模拟浏览器环境和自定义环境
+describe("emailValidator", () => {
+  it("should return true for valid email", () => {
+    const email = "valid-email@example.com"
+    expect(emailValidator(email)).toBe(true)
+  })
 
-# 二十七、给测试命名的艺术
+  it("should return false for invalid email without domain extension", () => {
+    const email = "invalid.email@example"
+    expect(emailValidator(email)).toBe(false)
+  })
 
-# 二十八、调用同一模块内的函数会mock失败
+  it("should return false for invalid email with extra dot at the end", () => {
+    const email = "another.invalid.email@example."
+    expect(emailValidator(email)).toBe(false)
+  })
 
-# 二十八、`snapshot` 快照测试
+  it("should return false for invalid email with missing '@'", () => {
+    const email = "yet.another.invalid.email.example.com"
+    expect(emailValidator(email)).toBe(false)
+  })
+})
 
-# 二十九、`Vitest`实战之`Vue`
+```
 
-# 三十、`Vitest`实战 - 推箱子
+解决办法：我们可以利用工具提供的方法
+
+```js
+import { emailValidator } from "./emailValidator"
+import { it, expect, describe } from "vitest"
+
+describe("emailValidator", () => {
+  it.each([
+    ["valid-email@example.com", true],
+    ["invalid.email@example", false],
+    ["another.invalid.email@example.", false],
+    ["yet.another.invalid.email.example.com", false],
+  ])("should return %s when email is %s", (email, expected) => {
+    expect(emailValidator(email)).toBe(expected)
+  })
+
+  it.each([{ email: "valid-email@example.com", expected: true }])(
+    "should return $email when email is $expected",
+    ({ email, expected }) => {
+      console.log(email, expected)
+      expect(emailValidator(email)).toBe(expected)
+    }
+  )
+
+  it.each`
+    email                        | expected
+    ${"valid-email@example.com"} | ${true}
+    ${"invalid.email@example"}   | ${false}
+  `("should return $email when email is $expected", ({ email, expected }) => {
+    console.log(email, expected)
+    expect(emailValidator(email)).toBe(expected)
+  })
+
+  it.each`
+    email             | expected
+    ${{ a: "aaaaa" }} | ${true}
+    ${[]}             | ${true}
+    ${false}          | ${true}
+  `("should return $email.a when email is $expected", ({ email, expected }) => {
+    console.log(email, expected)
+    expect(false).toBe(true)
+    //     expect(emailValidator(email)).toBe(expected);
+  })
+})
+
+```
+
+我们使用`it.each`，并且使用模版字符串的语法，在参数中，我们还可以使用`$email.a`去获取参数，其中第三种和第四种方法是最佳实践
+
+第一种方法因为在执行过程中，不太好查看错误信息，所以不推荐使用
+
+# 二十七、`Vitest`实战之`Vue`
+
+# 二十八、`Vitest`实战 - 推箱子
